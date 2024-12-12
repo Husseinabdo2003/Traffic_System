@@ -1,0 +1,115 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity car_detection is
+    Port (
+        clk         : in  STD_LOGIC;                -- Clock signal
+        reset       : in  STD_LOGIC;                -- Reset signal
+        sensor_echo : in  STD_LOGIC;                -- HC-SR04 Echo input
+        sensor_trig : out STD_LOGIC;                -- HC-SR04 Trigger output
+        alarm       : out STD_LOGIC;                -- Alarm signal
+        distance    : out INTEGER range 0 to 400;   -- Distance in cm
+        leds        : out STD_LOGIC_VECTOR(15 downto 0) -- LEDs on Basys 3
+    );
+end car_detection;
+
+architecture Behavioral of car_detection is
+    -- Constants for timing
+    constant CLK_FREQ        : INTEGER := 100_000_000; -- 100 MHz clock
+    constant TRIG_DURATION   : INTEGER := CLK_FREQ / 1_000_000 * 40; -- 40 µs
+    constant TRIG_INTERVAL   : INTEGER := CLK_FREQ / 1000 * 60; -- 60 ms
+    constant ECHO_TIMEOUT    : INTEGER := CLK_FREQ / 50; -- 20 ms max echo time
+    constant DIST_ERROR      : INTEGER := 400; -- Error distance for missed echo
+    constant ALARM_THRESHOLD : INTEGER := 5; -- Distance threshold for alarm
+
+    -- Internal signals
+    signal internal_distance : INTEGER range 0 to 400 := 0; -- Measured distance
+    signal pulse_width       : INTEGER range 0 to ECHO_TIMEOUT := 0; -- Echo pulse width
+    signal pulse_counter     : INTEGER range 0 to TRIG_DURATION := 0; -- Trigger pulse counter
+    signal trig_enable       : STD_LOGIC := '0'; -- Trigger enable signal
+    signal echo_timer        : INTEGER range 0 to ECHO_TIMEOUT := 0; -- Echo timeout counter
+    signal trigger_interval  : INTEGER range 0 to TRIG_INTERVAL := 0; -- Trigger interval counter
+    
+begin
+    -- Assign internal distance to output port
+    distance <= internal_distance;
+
+    -- Generate 10 µs trigger pulse
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            sensor_trig <= '0';
+            pulse_counter <= 0;
+            trig_enable <= '0';
+            trigger_interval <= 0;
+        elsif rising_edge(clk) then
+            if trigger_interval < TRIG_INTERVAL then
+                trigger_interval <= trigger_interval + 1;
+            else
+                trig_enable <= '1'; -- Enable trigger every 60 ms
+                trigger_interval <= 0;
+            end if;
+
+            if trig_enable = '1' then
+                if pulse_counter < TRIG_DURATION then
+                    sensor_trig <= '1';
+                    pulse_counter <= pulse_counter + 1;
+                else
+                    sensor_trig <= '0';
+                    trig_enable <= '0';
+                    pulse_counter <= 0;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    -- Measure echo pulse width
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            pulse_width <= 0;
+            internal_distance <= 0;
+            echo_timer <= 0;
+        elsif rising_edge(clk) then
+            if sensor_echo = '1' then
+                if pulse_width < ECHO_TIMEOUT then
+                    pulse_width <= pulse_width + 1; -- Increment pulse width
+                end if;
+                echo_timer <= 0; -- Reset timeout while echo is high
+            elsif sensor_echo = '0' and pulse_width > 0 then
+                -- Calculate distance only if pulse width is within valid range
+                if pulse_width >= 116 and pulse_width <= ECHO_TIMEOUT then -- Filter noise
+                    internal_distance <= (pulse_width * 34300) / (CLK_FREQ * 2); -- Accurate integer calc
+                else
+                    internal_distance <= DIST_ERROR; -- Invalid echo duration
+                end if;
+                pulse_width <= 0; -- Reset pulse width after measurement
+            elsif echo_timer < ECHO_TIMEOUT then
+                echo_timer <= echo_timer + 1;
+            else
+                internal_distance <= DIST_ERROR; -- Set to error distance on timeout
+                pulse_width <= 0;
+            end if;
+        end if;
+    end process;
+
+    -- Trigger alarm and LEDs if a car is detected within a certain range
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            alarm <= '0';
+            leds <= (others => '0');
+             -- Turn off all LEDs
+        elsif rising_edge(clk) then
+            if internal_distance < ALARM_THRESHOLD then
+                alarm <= '1';
+                leds <= (others => '1'); -- Turn on all LEDs
+            else
+                alarm <= '0';
+                leds <= (others => '0'); -- Turn off all LEDs
+            end if;
+        end if;
+    end process;
+
+end Behavioral;

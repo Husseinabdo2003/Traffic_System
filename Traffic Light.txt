@@ -1,0 +1,127 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity Traffic_Light is
+    Port (
+        clk       : in  STD_LOGIC; -- Clock input (100 MHz)
+        reset     : in  STD_LOGIC; -- Reset input
+        AC_green  : out STD_LOGIC; -- Green LED for Road A/C
+        AC_yellow : out STD_LOGIC; -- Yellow LED for Road A/C
+        AC_red    : out STD_LOGIC; -- Red LED for Road A/C
+        BD_green  : out STD_LOGIC; -- Green LED for Road B/D
+        BD_yellow : out STD_LOGIC; -- Yellow LED for Road B/D
+        BD_red    : out STD_LOGIC; -- Red LED for Road B/D
+        P_AC_green: out STD_LOGIC; -- Pedestrian green for A/C
+        P_AC_red  : out STD_LOGIC; -- Pedestrian red for A/C
+        P_BD_green: out STD_LOGIC; -- Pedestrian green for B/D
+        P_BD_red  : out STD_LOGIC  -- Pedestrian red for B/D
+    );
+end Traffic_Light;
+
+architecture Behavioral of Traffic_Light is
+    -- State enumeration
+    type state_type is (s0, s1, s2, s3); -- States: s0 to s3
+    signal state : state_type := s0; -- Initial state is s0
+    signal counter : unsigned(5 downto 0) := (others => '0'); -- Counter for seconds (0-59)
+
+    signal one_hz_clk : STD_LOGIC := '0'; -- Slower 1 Hz clock
+    signal clk_divider : unsigned(26 downto 0) := (others => '0'); -- Divider for 100 MHz to 1 Hz
+
+    constant CYCLE_50_SECONDS : unsigned(5 downto 0) := to_unsigned(50, 6); -- 50 seconds
+    constant CYCLE_10_SECONDS : unsigned(5 downto 0) := to_unsigned(10, 6); -- 10 seconds
+begin
+    -- Clock Divider Process: Divide 100 MHz clock to 1 Hz
+    process(clk, reset)
+    begin
+        if reset = '1' then
+            clk_divider <= (others => '0');
+            one_hz_clk <= '0';
+        elsif rising_edge(clk) then
+            if clk_divider = to_unsigned(100_000_000 / 2 - 1, 27) then
+                clk_divider <= (others => '0');
+                one_hz_clk <= not one_hz_clk; -- Toggle 1 Hz clock
+            else
+                clk_divider <= clk_divider + 1;
+            end if;
+        end if;
+    end process;
+
+    -- Main Traffic Light FSM
+    process(one_hz_clk, reset)
+    begin
+        if reset = '1' then
+            -- Reset to initial state (s0)
+            state <= s0;
+            counter <= (others => '0');
+
+            -- Initialize traffic light outputs
+            AC_green <= '1'; AC_yellow <= '0'; AC_red <= '0';
+            BD_green <= '0'; BD_yellow <= '0'; BD_red <= '1';
+
+            -- Initialize pedestrian light outputs
+            P_AC_green <= '0'; P_AC_red <= '1'; -- No walk for A/C
+            P_BD_green <= '1'; P_BD_red <= '0'; -- Walk for B/D
+
+        elsif rising_edge(one_hz_clk) then
+            case state is
+                when s0 =>
+                    -- AC Green, BD Red (50 seconds)
+                    AC_green <= '1'; AC_yellow <= '0'; AC_red <= '0';
+                    BD_green <= '0'; BD_yellow <= '0'; BD_red <= '1';
+                    P_AC_green <= '0'; P_AC_red <= '1';
+                    P_BD_green <= '1'; P_BD_red <= '0';
+
+                    if counter = CYCLE_50_SECONDS then
+                        counter <= (others => '0');
+                        state <= s1; -- Transition to AC Yellow
+                    else
+                        counter <= counter + 1;
+                    end if;
+
+                when s1 =>
+                    -- AC Yellow, BD Red (10 seconds)
+                    AC_green <= '0'; AC_yellow <= '1'; AC_red <= '0';
+                    BD_green <= '0'; BD_yellow <= '0'; BD_red <= '1';
+                    P_AC_green <= '0'; P_AC_red <= '1';
+                    P_BD_green <= '1'; P_BD_red <= '0';
+
+                    if counter = CYCLE_10_SECONDS then
+                        counter <= (others => '0');
+                        state <= s2; -- Transition to BD Green
+                    else
+                        counter <= counter + 1;
+                    end if;
+
+                when s2 =>
+                    -- BD Green, AC Red (50 seconds)
+                    AC_green <= '0'; AC_yellow <= '0'; AC_red <= '1';
+                    BD_green <= '1'; BD_yellow <= '0'; BD_red <= '0';
+                    P_AC_green <= '1'; P_AC_red <= '0';
+                    P_BD_green <= '0'; P_BD_red <= '1';
+
+                    if counter = CYCLE_50_SECONDS then
+                        counter <= (others => '0');
+                        state <= s3; -- Transition to BD Yellow
+                    else
+                        counter <= counter + 1;
+                    end if;
+
+                when s3 =>
+                    -- BD Yellow, AC Red (10 seconds)
+                    AC_green <= '0'; AC_yellow <= '0'; AC_red <= '1';
+                    BD_green <= '0'; BD_yellow <= '1'; BD_red <= '0';
+                    P_AC_green <= '1'; P_AC_red <= '0';
+                    P_BD_green <= '0'; P_BD_red <= '1';
+
+                    if counter = CYCLE_10_SECONDS then
+                        counter <= (others => '0');
+                        state <= s0; -- Transition back to AC Green
+                    else
+                        counter <= counter + 1;
+                    end if;
+
+            end case;
+        end if;
+    end process;
+end Behavioral;

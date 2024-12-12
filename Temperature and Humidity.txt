@@ -1,0 +1,77 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity Temperature_Humidity_LCD is
+    Port (
+        clk          : in  STD_LOGIC;
+        dht_data     : inout STD_LOGIC;
+        lcd_rs       : out STD_LOGIC;
+        lcd_en       : out STD_LOGIC;
+        lcd_data     : out STD_LOGIC_VECTOR(7 downto 0)
+    );
+end Temperature_Humidity_LCD;
+
+architecture Behavioral of Temperature_Humidity_LCD is
+    type dht_state_type is (IDLE, START, RESPONSE, READ_DATA);
+    signal dht_state : dht_state_type := IDLE;
+    signal clk_div     : INTEGER range 0 to 100000 := 0;
+    signal dht_clk     : STD_LOGIC := '0';
+    signal data_counter : INTEGER range 0 to 40 := 0;
+    signal dht_buffer : STD_LOGIC_VECTOR(39 downto 0) := (others => '0');
+    signal temp_data  : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
+    signal humid_data : STD_LOGIC_VECTOR(7 downto 0) := (others => '0');
+    signal lcd_ready  : STD_LOGIC := '0';
+begin
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if clk_div = 100000 then
+                clk_div <= 0;
+                dht_clk <= not dht_clk;
+            else
+                clk_div <= clk_div + 1;
+            end if;
+        end if;
+    end process;
+
+    process(dht_clk)
+    begin
+        if rising_edge(dht_clk) then
+            case dht_state is
+                when IDLE =>
+                    dht_data <= '0';
+                    dht_state <= START;
+                when START =>
+                    if clk_div = 18000 then
+                        dht_data <= 'Z';
+                        dht_state <= RESPONSE;
+                    end if;
+                when RESPONSE =>
+                    if dht_data = '0' then
+                        dht_state <= READ_DATA;
+                        data_counter <= 0;
+                    end if;
+                when READ_DATA =>
+                    if data_counter < 40 then
+                        dht_buffer(data_counter) <= dht_data;
+                        data_counter <= data_counter + 1;
+                    else
+                        humid_data <= dht_buffer(39 downto 32);
+                        temp_data <= dht_buffer(23 downto 16);
+                        dht_state <= IDLE;
+                        lcd_ready <= '1';
+                    end if;
+            end case;
+        end if;
+    end process;
+
+    process(dht_clk, lcd_ready)
+    begin
+        if rising_edge(dht_clk) and lcd_ready = '1' then
+            lcd_rs <= '1';
+            lcd_data <= "01010100"; -- 'T'
+            lcd_en <= '1';
+        end if;
+    end process;
+end Behavioral;

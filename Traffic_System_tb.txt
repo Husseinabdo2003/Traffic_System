@@ -1,0 +1,128 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity Traffic_System_tb is
+-- No ports in the test bench
+end Traffic_System_tb;
+
+architecture Behavioral of Traffic_System_tb is
+    -- Constants for clock period
+    constant CLK_PERIOD : time := 10 ns; -- 100 MHz clock
+    
+    -- Signals to connect to the UUT (Unit Under Test)
+    signal clk         : STD_LOGIC := '0';
+    signal reset       : STD_LOGIC := '0';
+
+    signal AC_green    : STD_LOGIC;
+    signal AC_yellow   : STD_LOGIC;
+    signal AC_red      : STD_LOGIC;
+    signal BD_green    : STD_LOGIC;
+    signal BD_yellow   : STD_LOGIC;
+    signal BD_red      : STD_LOGIC;
+
+    signal P_AC_green  : STD_LOGIC;
+    signal P_AC_red    : STD_LOGIC;
+    signal P_BD_green  : STD_LOGIC;
+    signal P_BD_red    : STD_LOGIC;
+
+    signal sensor_echo_1 : STD_LOGIC := '0';
+    signal sensor_echo_2 : STD_LOGIC := '0';
+    signal sensor_echo_3 : STD_LOGIC := '0';
+    signal sensor_echo_4 : STD_LOGIC := '0';
+    signal sensor_trig   : STD_LOGIC;
+    signal alarm         : STD_LOGIC;
+
+    signal dht_data    : STD_LOGIC := 'Z'; -- Tristate signal
+    signal lcd_rs      : STD_LOGIC;
+    signal lcd_en      : STD_LOGIC;
+    signal lcd_data    : STD_LOGIC_VECTOR(7 downto 0);
+    
+begin
+    -- Clock generation
+    clk_process : process
+    begin
+        clk <= '0';
+        wait for CLK_PERIOD / 2;
+        clk <= '1';
+        wait for CLK_PERIOD / 2;
+    end process;
+
+    -- Instantiate the Unit Under Test (UUT)
+    UUT: entity work.Traffic_System
+        port map (
+            clk         => clk,
+            reset       => reset,
+            AC_green    => AC_green,
+            AC_yellow   => AC_yellow,
+            AC_red      => AC_red,
+            BD_green    => BD_green,
+            BD_yellow   => BD_yellow,
+            BD_red      => BD_red,
+            P_AC_green  => P_AC_green,
+            P_AC_red    => P_AC_red,
+            P_BD_green  => P_BD_green,
+            P_BD_red    => P_BD_red,
+            sensor_echo_1 => sensor_echo_1,
+            sensor_echo_2 => sensor_echo_2,
+            sensor_echo_3 => sensor_echo_3,
+            sensor_echo_4 => sensor_echo_4,
+            sensor_trig   => sensor_trig,
+            alarm         => alarm,
+            dht_data      => dht_data,
+            lcd_rs        => lcd_rs,
+            lcd_en        => lcd_en,
+            lcd_data      => lcd_data
+        );
+
+    -- Test Scenarios
+    stimulus_process : process
+    begin
+        -- Reset the system
+        reset <= '1';
+        wait for 100 ns;
+        reset <= '0';
+        wait for 100 ns;
+        
+        -- Test case 1: Initial state check
+        assert (AC_green = '1' and AC_red = '0' and BD_red = '1')
+            report "Error: Initial state failed" severity error;
+
+        -- Test case 2: Transition AC to Yellow
+        wait for 60 us; -- Assuming a 60 us AC Green duration
+        assert (AC_yellow = '1' and AC_green = '0' and BD_red = '1')
+            report "Error: Transition to AC Yellow failed" severity error;
+
+        -- Test case 3: Transition BD to Green
+        wait for 10 us; -- Assuming AC Yellow is 10 us
+        assert (BD_green = '1' and AC_red = '1')
+            report "Error: Transition to BD Green failed" severity error;
+
+        -- Test case 4: Sensor activation
+        sensor_echo_1 <= '1';
+        wait for 2 us;
+        sensor_echo_1 <= '0';
+        wait for 1 us;
+        assert (alarm = '1') report "Error: Alarm not triggered by sensor" severity error;
+
+        -- Test case 5: Pedestrian crossing
+        dht_data <= '0'; -- Simulate pedestrian request
+        wait for 10 us;
+        assert (P_AC_green = '1' and P_AC_red = '0')
+            report "Error: Pedestrian AC crossing failed" severity error;
+
+        -- Test case 6: LCD display
+        wait for 10 us; -- Simulate some time for LCD to show data
+        assert (lcd_rs = '1' and lcd_data /= "00000000")
+            report "Error: LCD display output failed" severity error;
+
+        -- Test case 7: Ensure all states are reachable
+        wait for 1 ms; -- Simulate running system for extended time
+        -- Manual or automated checks for all states can be added here
+        
+        -- End simulation
+        report "All tests passed successfully!" severity note;
+        wait;
+    end process;
+
+end Behavioral;

@@ -1,0 +1,166 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity Traffic_System is
+    Port (
+        -- Clock and Reset
+        clk         : in  STD_LOGIC;            -- Clock input (100 MHz)
+        reset       : in  STD_LOGIC;            -- Reset input
+
+        -- Traffic Light Outputs
+        AC_green    : out STD_LOGIC;            -- Green LED for Road A/C
+        AC_yellow   : out STD_LOGIC;            -- Yellow LED for Road A/C
+        AC_red      : out STD_LOGIC;            -- Red LED for Road A/C
+        BD_green    : out STD_LOGIC;            -- Green LED for Road B/D
+        BD_yellow   : out STD_LOGIC;            -- Yellow LED for Road B/D
+        BD_red      : out STD_LOGIC;            -- Red LED for Road B/D
+
+        -- Pedestrian Light Outputs
+        P_AC_green  : out STD_LOGIC;            -- Pedestrian green for A/C
+        P_AC_red    : out STD_LOGIC;            -- Pedestrian red for A/C
+        P_BD_green  : out STD_LOGIC;            -- Pedestrian green for B/D
+        P_BD_red    : out STD_LOGIC;            -- Pedestrian red for B/D
+
+        -- Car Detection Inputs/Outputs
+        sensor_echo_1 : in STD_LOGIC;           -- Sensor 1 Echo input
+        sensor_echo_2 : in STD_LOGIC;           -- Sensor 2 Echo input
+        sensor_echo_3 : in STD_LOGIC;           -- Sensor 3 Echo input
+        sensor_echo_4 : in STD_LOGIC;           -- Sensor 4 Echo input
+        sensor_trig   : out STD_LOGIC;          -- HC-SR04 Trigger output
+        alarm         : out STD_LOGIC;          -- Alarm signal
+
+        -- Temperature and Humidity LCD Outputs
+        dht_data    : inout STD_LOGIC;          -- DHT Data for Temperature/Humidity sensor
+        lcd_rs      : out STD_LOGIC;            -- LCD RS (Register Select)
+        lcd_en      : out STD_LOGIC;            -- LCD EN (Enable)
+        lcd_data    : out STD_LOGIC_VECTOR(7 downto 0) -- LCD Data (8-bit data)
+    );
+end Traffic_System;
+
+architecture Structural of Traffic_System is
+
+    -- Internal Signals for connecting modules
+    signal AC_green_signal   : STD_LOGIC;
+    signal AC_yellow_signal  : STD_LOGIC;
+    signal AC_red_signal     : STD_LOGIC;
+    signal BD_green_signal   : STD_LOGIC;
+    signal BD_yellow_signal  : STD_LOGIC;
+    signal BD_red_signal     : STD_LOGIC;
+    signal P_AC_green_signal : STD_LOGIC;
+    signal P_AC_red_signal   : STD_LOGIC;
+    signal P_BD_green_signal : STD_LOGIC;
+    signal P_BD_red_signal   : STD_LOGIC;
+    
+
+    -- Signals for Car Detection Module
+    signal alarm_1, alarm_2, alarm_3, alarm_4 : STD_LOGIC;
+    signal sensor_trig_1, sensor_trig_2, sensor_trig_3, sensor_trig_4 : STD_LOGIC;
+
+    -- Signals for combining alarms and triggers
+    signal combined_alarm : STD_LOGIC;
+    signal combined_trig  : STD_LOGIC;
+
+    -- Signals for Temperature and Humidity LCD Module
+    signal dht_data_signal : STD_LOGIC;
+    signal lcd_rs_signal   : STD_LOGIC;
+    signal lcd_en_signal   : STD_LOGIC;
+    signal lcd_data_signal : STD_LOGIC_VECTOR(7 downto 0);
+
+begin
+
+    -- Instantiate Traffic Light Intersection with Pedestrian Control Module
+    Traffic_Light_Intersection : entity work.Traffic_Light
+        port map (
+            clk => clk,
+            reset => reset,
+            AC_green => AC_green_signal,
+            AC_yellow => AC_yellow_signal,
+            AC_red => AC_red_signal,
+            BD_green => BD_green_signal,
+            BD_yellow => BD_yellow_signal,
+            BD_red => BD_red_signal,
+            P_AC_green => P_AC_green_signal,
+            P_AC_red => P_AC_red_signal,
+            P_BD_green => P_BD_green_signal,
+            P_BD_red => P_BD_red_signal
+        );
+
+    -- Instantiate Car Detection Modules
+    Car_Detection1 : entity work.car_detection
+        port map (
+            clk => clk,
+            reset => reset,
+            sensor_echo => sensor_echo_1,
+            sensor_trig => sensor_trig_1,
+
+            alarm => alarm_1
+        );
+
+    Car_Detection2 : entity work.car_detection
+        port map (
+            clk => clk,
+            reset => reset,
+            sensor_echo => sensor_echo_2,
+            sensor_trig => sensor_trig_2,
+            alarm => alarm_2
+        );
+
+    Car_Detection3 : entity work.car_detection
+        port map (
+            clk => clk,
+            reset => reset,
+            sensor_echo => sensor_echo_3,
+            sensor_trig => sensor_trig_3,
+
+            alarm => alarm_3
+        );
+
+    Car_Detection4 : entity work.car_detection
+        port map (
+            clk => clk,
+            reset => reset,
+            sensor_echo => sensor_echo_4,
+            sensor_trig => sensor_trig_4,
+
+            alarm => alarm_4
+        );
+
+    -- Combine alarm signals
+    combined_alarm <= alarm_1 or alarm_2 or alarm_3 or alarm_4;
+
+    -- Combine trigger signals
+    combined_trig <= sensor_trig_1 or sensor_trig_2 or sensor_trig_3 or sensor_trig_4;
+
+    -- Assign combined outputs to top-level ports
+    sensor_trig <= combined_trig;
+    alarm <= combined_alarm;
+
+    -- Instantiate Temperature and Humidity LCD Module
+    Temp_Humidity_LCD_Module : entity work.Temperature_Humidity_LCD
+        port map (
+            clk => clk,
+            dht_data => dht_data_signal,
+            lcd_rs => lcd_rs_signal,
+            lcd_en => lcd_en_signal,
+            lcd_data => lcd_data_signal
+        );
+
+    -- Assign signals to top-level outputs
+    AC_green <= AC_green_signal;
+    AC_yellow <= AC_yellow_signal;
+    AC_red <= AC_red_signal;
+    BD_green <= BD_green_signal;
+    BD_yellow <= BD_yellow_signal;
+    BD_red <= BD_red_signal;
+    P_AC_green <= P_AC_green_signal;
+    P_AC_red <= P_AC_red_signal;
+    P_BD_green <= P_BD_green_signal;
+    P_BD_red <= P_BD_red_signal;
+
+    dht_data <= dht_data_signal;
+    lcd_rs <= lcd_rs_signal;
+    lcd_en <= lcd_en_signal;
+    lcd_data <= lcd_data_signal;
+
+end Structural;
